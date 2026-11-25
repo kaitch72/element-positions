@@ -29,6 +29,7 @@
   #stage {
     position: absolute; top: 0; left: 0; width: 1920px; height: 1080px;
     transform-origin: 0 0; overflow: hidden;
+    -webkit-font-smoothing: antialiased;  /* crisper, lighter-looking text on Macs */
     color: var(--white);
     /* Background exported from Figma (shapes, header text and logo), embedded in this file
        as text so there is no separate image to upload. To change it, ask for a new embed. */
@@ -55,7 +56,10 @@
     padding-bottom: 0.12em;  /* room for descenders like g and p */
     margin-right: 40px;      /* breathing room, so long titles never touch the right edge */
   }
-  .type { font: 400 52px/1 var(--font-slab); color: var(--navy); white-space: nowrap; }
+  /* Job type ("Full Time" / "Internship"): adjust size and weight here */
+  .type { font-family: var(--font-slab); font-size: 42px; font-weight: 300; line-height: 1;
+          font-synthesis: none;  /* never fake a bold version */
+          color: var(--navy); white-space: nowrap; }
 
   /* Page dots (only show when there's more than one page) */
   .dots { position: absolute; left: 60px; top: 845px; display: flex; gap: 14px; }

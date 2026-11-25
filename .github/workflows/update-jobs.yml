@@ -1,0 +1,40 @@
+name: Update job feed
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes (GitHub may run it a few minutes late)
+  workflow_dispatch:          # adds a "Run workflow" button so you can run it by hand
+
+permissions:
+  contents: write             # lets the workflow commit the updated jobs.xml
+
+concurrency:
+  group: update-jobs          # never run two updates at the same time
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the repo files
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch and clean the careers feed
+        run: node scripts/update-jobs.mjs
+
+      - name: Save changes (only if the jobs changed)
+        run: |
+          if git diff --quiet -- feeds/jobs.xml && [ -z "$(git ls-files --others --exclude-standard feeds)" ]; then
+            echo "Nothing changed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add feeds/jobs.xml
+          git commit -m "Update job feed"
+          git push

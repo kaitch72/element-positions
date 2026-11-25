@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Element – Open Positions</title>
+<!-- Stand-in fonts from Google. Swap for the real brand fonts (see FONTS below). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600&family=Roboto+Slab:wght@400&display=swap" rel="stylesheet">
+<style>
+  /* ================= BRAND TOKENS (sampled from the Figma export) ================= */
+  :root {
+    --purple:       #5c2b85;  /* background, job titles */
+    --green:        #b2d235;  /* bars, job type panel */
+    --navy:         #052b48;  /* job type text */
+    --white:        #ffffff;
+
+    /* FONTS: replace the first name in each list with the real brand font */
+    --font-sans: "Museo Sans", "Nunito Sans", "Segoe UI", Arial, sans-serif;
+    --font-slab: "Museo Slab", "Roboto Slab", Georgia, serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+
+  /* Designed at 1920x1080 (same as the Figma frame), scaled to fit any screen */
+  #stage {
+    position: absolute; top: 0; left: 0; width: 1920px; height: 1080px;
+    transform-origin: 0 0; overflow: hidden;
+    color: var(--white);
+    /* Background exported from Figma: shapes, header text and logo are all baked in */
+    background: var(--purple) url("assets/background.jpg") center / 1920px 1080px no-repeat;
+  }
+
+  /* ---------- Job list ---------- */
+  .card, .panel {
+    position: absolute; top: 405px; height: 400px; border-radius: 24px; z-index: 2;
+    display: flex; flex-direction: column; justify-content: center; gap: 40px;
+  }
+  .card  { left: 60px;   width: 1336px; background: var(--white); padding: 0 40px; }
+  .panel { left: 1436px; width: 422px;  background: var(--green); padding: 0 41px; }
+
+  .row { height: 80px; display: flex; align-items: center; }
+  .bar { width: 6px; height: 80px; background: var(--green); flex: none; margin-right: 31px; }
+  .title {
+    font: 400 64px/1 var(--font-sans); color: var(--purple);
+    text-transform: lowercase; white-space: nowrap; overflow: hidden; flex: 1;
+    padding-bottom: 0.12em;  /* room for descenders like g and p */
+  }
+  .type { font: 400 52px/1 var(--font-slab); color: var(--navy); white-space: nowrap; }
+
+  /* Page dots (only show when there's more than one page) */
+  .dots { position: absolute; left: 60px; top: 845px; display: flex; gap: 14px; }
+  .dots span { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.3);
+               transition: background 400ms; }
+  .dots span.on { background: var(--white); }
+
+  /* Evergreen state: no jobs, or the feed can't be reached */
+  .evergreen .panel { display: none; }
+  .evergreen .card  { width: 1798px; }
+  .careers-link { position: absolute; left: 60px; top: 845px; font: 400 44px/1 var(--font-sans);
+                  display: none; }
+  .evergreen .careers-link { display: block; }
+
+  /* ---------- Motion: one page-change moment ---------- */
+  .leaving .row { animation: leave 350ms ease-in both; }
+  .entering .bar   { animation: grow 500ms cubic-bezier(.2,.7,.2,1) both; transform-origin: top; }
+  .entering .title,
+  .entering .type  { animation: slide 700ms cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes leave { to { opacity: 0; transform: translateY(-12px); } }
+  @keyframes grow  { from { transform: scaleY(0); } }
+  @keyframes slide { from { opacity: 0; transform: translateX(-24px); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .leaving .row, .entering .bar, .entering .title, .entering .type { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="card"  id="titles"></div>
+  <div class="panel" id="types"></div>
+  <div class="dots"  id="dots"></div>
+  <div class="careers-link">everybitmatters.com/careers</div>
+
+</div>
+
+<script>
+  // ======================= SETTINGS =======================
+  const CONFIG = {
+    feedUrl: "feeds/jobs.xml",       // the file the GitHub Action keeps updated
+    perPage: 3,                      // jobs shown at once (matches the design)
+    pageMs: 10000,                   // how long each page stays up
+    refreshMs: 15 * 60 * 1000,       // re-check the feed every 15 minutes
+    shortenInternships: true,        // "marketing internship program" -> "marketing"
+    showPageDots: true,
+    minTitleSize: 44,                // long titles shrink, but never below this
+    evergreenMessage: "new roles coming soon"
+  };
+
+  const state = { jobs: [], page: 0, timer: null };
+  const stage  = document.getElementById("stage");
+  const titles = document.getElementById("titles");
+  const types  = document.getElementById("types");
+  const dots   = document.getElementById("dots");
+
+  // ============ STEP 1: FETCH + PARSE THE FEED ============
+  async function loadJobs() {
+    const response = await fetch(CONFIG.feedUrl + "?v=" + Date.now(), { cache: "no-store" });
+    if (!response.ok) throw new Error("Feed returned " + response.status);
+    const xml = new DOMParser().parseFromString(await response.text(), "application/xml");
+    if (xml.querySelector("parsererror")) throw new Error("Feed is not valid XML");
+
+    const get = (item, tag) => (item.querySelector(tag)?.textContent || "").trim();
+    return [...xml.querySelectorAll("item")]
+      .map(item => ({ title: get(item, "title"), type: get(item, "employmentType") || "Full Time" }))
+      .filter(job => job.title);
+  }
+
+  // The type panel already says "Internship", so drop it from the title
+  function displayTitle(job) {
+    if (CONFIG.shortenInternships && job.type === "Internship") {
+      return job.title.replace(/\s+internship(\s+program)?\s*$/i, "");
+    }
+    return job.title;
+  }
+
+  // ============ STEP 2: RENDER ONE PAGE ============
+  function pageCount() { return Math.ceil(state.jobs.length / CONFIG.perPage); }
+
+  function fitTitle(el) {
+    let size = 64;
+    el.style.fontSize = size + "px";
+    while (el.scrollWidth > el.clientWidth && size > CONFIG.minTitleSize) {
+      size -= 2;
+      el.style.fontSize = size + "px";
+    }
+  }
+
+  function buildRows(jobs) {
+    titles.innerHTML = "";
+    types.innerHTML = "";
+    jobs.forEach((job, i) => {
+      const delay = i * 140 + "ms";
+
+      const row = document.createElement("div");
+      row.className = "row";
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.style.animationDelay = delay;
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = displayTitle(job);
+      title.style.animationDelay = delay;
+      row.append(bar, title);
+      titles.append(row);
+      fitTitle(title);
+
+      const typeRow = document.createElement("div");
+      typeRow.className = "row";
+      const type = document.createElement("div");
+      type.className = "type";
+      type.textContent = job.type;
+      type.style.animationDelay = delay;
+      typeRow.append(type);
+      types.append(typeRow);
+    });
+  }
+
+  function buildDots() {
+    dots.innerHTML = "";
+    if (!CONFIG.showPageDots || pageCount() < 2) return;
+    for (let i = 0; i < pageCount(); i++) {
+      const dot = document.createElement("span");
+      if (i === state.page) dot.className = "on";
+      dots.append(dot);
+    }
+  }
+
+  function showPage(animateOut) {
+    const start = state.page * CONFIG.perPage;
+    const jobs = state.jobs.slice(start, start + CONFIG.perPage);
+
+    const draw = () => {
+      stage.classList.remove("leaving", "entering");
+      buildRows(jobs);
+      buildDots();
+      void stage.offsetWidth;          // restart the entrance animation
+      stage.classList.add("entering");
+    };
+
+    if (animateOut) {
+      stage.classList.remove("entering");
+      stage.classList.add("leaving");
+      setTimeout(draw, 380);
+    } else {
+      draw();
+    }
+  }
+
+  // ============ STEP 3: ROTATE PAGES ============
+  function start(jobs) {
+    clearInterval(state.timer);
+    stage.classList.remove("evergreen");
+    state.jobs = jobs;
+    state.page = 0;
+    showPage(false);
+    if (pageCount() < 2) return;       // 3 or fewer jobs: hold still
+    state.timer = setInterval(() => {
+      state.page = (state.page + 1) % pageCount();
+      showPage(true);
+    }, CONFIG.pageMs);
+  }
+
+  function showEvergreen() {
+    clearInterval(state.timer);
+    state.jobs = [];
+    stage.classList.add("evergreen");
+    stage.classList.remove("leaving");
+    buildRows([{ title: CONFIG.evergreenMessage, type: "" }]);
+    titles.querySelector(".title").style.textTransform = "none";
+    dots.innerHTML = "";
+  }
+
+  // ============ START + KEEP FRESH ============
+  async function init() {
+    try {
+      const jobs = await loadJobs();
+      jobs.length ? start(jobs) : showEvergreen();
+    } catch (err) {
+      console.error(err);
+      showEvergreen();
+    }
+  }
+
+  async function refresh() {
+    try {
+      const jobs = await loadJobs();
+      if (JSON.stringify(jobs) === JSON.stringify(state.jobs)) return;
+      jobs.length ? start(jobs) : showEvergreen();
+    } catch (err) {
+      console.warn("Refresh failed, keeping what's on screen:", err);  // never blank the sign
+    }
+  }
+
+  function scaleStage() {
+    const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = `scale(${s})`;
+    stage.style.left = (innerWidth - 1920 * s) / 2 + "px";
+    stage.style.top  = (innerHeight - 1080 * s) / 2 + "px";
+  }
+  addEventListener("resize", scaleStage);
+  scaleStage();
+
+  document.fonts.ready.then(() => { init(); setInterval(refresh, CONFIG.refreshMs); });
+</script>
+</body>
+</html>

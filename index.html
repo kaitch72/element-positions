@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Element – Open Positions</title>
-<!-- Stand-in fonts from Google. Swap for the real brand fonts (see FONTS below). -->
+<!-- Backup fonts from Google, used only when Avenir and Museo Slab are not available -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600&family=Roboto+Slab:wght@400&display=swap" rel="stylesheet">
@@ -16,9 +16,10 @@
     --navy:         #052b48;  /* job type text */
     --white:        #ffffff;
 
-    /* FONTS: replace the first name in each list with the real brand font */
-    --font-sans: "Museo Sans", "Nunito Sans", "Segoe UI", Arial, sans-serif;
-    --font-slab: "Museo Slab", "Roboto Slab", Georgia, serif;
+    /* FONTS: brand fonts first. They're used when installed on the device
+       (or once web font files are added); otherwise the Google stand-ins load. */
+    --font-sans: "Avenir LT Pro", "Avenir", "AvenirLTPro-Roman", "Avenir Next", "Nunito Sans", Arial, sans-serif;
+    --font-slab: "Museo Slab", "MuseoSlab-500", "Roboto Slab", Georgia, serif;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
